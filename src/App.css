@@ -6,12 +6,34 @@
   background: #1a1a2e;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
 }
 
 .app-header h1 {
   color: #e94560;
   margin: 0;
   font-size: 24px;
+}
+
+/* Login Page Styles */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  padding: 20px;
+}
+
+.login-card {
+  width: 400px;
+  max-width: 100%;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 24px;
 }
 
 .app-content {

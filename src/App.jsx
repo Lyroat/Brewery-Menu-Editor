@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { ConfigProvider, Layout, Tabs, message } from 'antd'
-import { EditOutlined, EyeOutlined, SaveOutlined } from '@ant-design/icons'
+import { useState, useEffect } from 'react'
+import { ConfigProvider, Layout, Tabs, Button, message, Tag, Space } from 'antd'
+import { EditOutlined, EyeOutlined, SaveOutlined, LogoutOutlined, UserOutlined, SettingOutlined } from '@ant-design/icons'
 import MenuEditor from './components/MenuEditor'
 import MenuPreview from './components/MenuPreview'
 import TemplateManager from './components/TemplateManager'
+import LoginPage from './components/LoginPage'
 import './App.css'
 
 const { Header, Content } = Layout
@@ -95,12 +96,32 @@ const createNewMenu = (name = '新酒单') => ({
 })
 
 function App() {
+  const [user, setUser] = useState(null)
   const [menus, setMenus] = useState(sampleMenus)
   const [activeMenuId, setActiveMenuId] = useState(sampleMenus[0].id)
   const [templates, setTemplates] = useState([defaultTemplate])
   const [activeTab, setActiveTab] = useState('edit')
 
+  useEffect(() => {
+    const savedUser = localStorage.getItem('menu_editor_current_user')
+    if (savedUser) {
+      setUser(JSON.parse(savedUser))
+    }
+  }, [])
+
+  const handleLogin = (userData) => {
+    setUser(userData)
+    localStorage.setItem('menu_editor_current_user', JSON.stringify(userData))
+  }
+
+  const handleLogout = () => {
+    setUser(null)
+    localStorage.removeItem('menu_editor_current_user')
+    message.success('已退出登录')
+  }
+
   const activeMenu = menus.find(m => m.id === activeMenuId)
+  const isAdmin = user?.role === 'admin'
 
   const updateActiveMenu = (updates) => {
     setMenus(menus.map(m => m.id === activeMenuId ? { ...m, ...updates } : m))
@@ -187,6 +208,14 @@ function App() {
     setActiveTab('preview')
   }
 
+  if (!user) {
+    return (
+      <ConfigProvider theme={{ token: { colorPrimary: '#e94560' } }}>
+        <LoginPage onLogin={handleLogin} />
+      </ConfigProvider>
+    )
+  }
+
   const tabItems = [
     {
       key: 'edit',
@@ -236,8 +265,8 @@ function App() {
       key: 'template',
       label: (
         <span>
-          <SaveOutlined />
-          模板管理
+          {isAdmin ? <SettingOutlined /> : <SaveOutlined />}
+          {isAdmin ? '系统配置' : '模板管理'}
         </span>
       ),
       children: (
@@ -247,22 +276,25 @@ function App() {
           onSave={handleSaveTemplate}
           onLoad={handleLoadTemplate}
           onTemplateChange={(tmpl) => updateActiveMenu({ template: tmpl })}
+          isAdmin={isAdmin}
         />
       ),
     },
   ]
 
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#e94560',
-        },
-      }}
-    >
+    <ConfigProvider theme={{ token: { colorPrimary: '#e94560' } }}>
       <Layout className="app-layout">
         <Header className="app-header">
           <h1>酒单编辑器</h1>
+          <Space>
+            <Tag color={isAdmin ? 'red' : 'blue'} icon={isAdmin ? <SettingOutlined /> : <UserOutlined />}>
+              {isAdmin ? '管理员' : '用户'}: {user.username}
+            </Tag>
+            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} style={{ color: '#fff' }}>
+              退出
+            </Button>
+          </Space>
         </Header>
         <Content className="app-content">
           <Tabs
