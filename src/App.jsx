@@ -28,6 +28,7 @@ const defaultTemplate = {
   accentColor: '#e94560',
   fontFamily: 'sans-serif',
   layout: 'card',
+  canvasSize: { width: 400, height: 500 },
 }
 
 const sampleMenus = [

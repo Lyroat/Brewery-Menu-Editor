@@ -22,7 +22,7 @@ const defaultLayoutItems = [
 ]
 
 export default function TemplateEditor({ template, onTemplateChange, onSave }) {
-  const [canvasSize, setCanvasSize] = useState({ width: 400, height: 500 })
+  const [canvasSize, setCanvasSize] = useState(template.canvasSize || { width: 400, height: 500 })
   const [selectedItem, setSelectedItem] = useState(null)
   const [layoutItems, setLayoutItems] = useState(defaultLayoutItems)
   const [history, setHistory] = useState([defaultLayoutItems])
@@ -67,13 +67,14 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
     })
   }, [])
 
-  const handleCanvasResizeStart = useCallback((e) => {
+  const handleCanvasResizeStart = useCallback((e, mode) => {
     e.stopPropagation()
     setCanvasResizeState({
       startX: e.clientX,
       startY: e.clientY,
       origW: canvasSize.width,
       origH: canvasSize.height,
+      mode, // 'corner' | 'width' | 'height'
     })
   }, [canvasSize])
 
@@ -105,10 +106,16 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
     if (canvasResizeState) {
       const dx = e.clientX - canvasResizeState.startX
       const dy = e.clientY - canvasResizeState.startY
-      setCanvasSize({
-        width: Math.max(200, Math.round(canvasResizeState.origW + dx)),
-        height: Math.max(200, Math.round(canvasResizeState.origH + dy)),
-      })
+      const newSize = { ...canvasSize }
+
+      if (canvasResizeState.mode === 'corner' || canvasResizeState.mode === 'width') {
+        newSize.width = Math.max(200, Math.round(canvasResizeState.origW + dx))
+      }
+      if (canvasResizeState.mode === 'corner' || canvasResizeState.mode === 'height') {
+        newSize.height = Math.max(200, Math.round(canvasResizeState.origH + dy))
+      }
+
+      setCanvasSize(newSize)
     }
   }, [dragState, canvasResizeState])
 
@@ -118,9 +125,10 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
       setDragState(null)
     }
     if (canvasResizeState) {
+      onTemplateChange({ ...template, canvasSize: { ...canvasSize } })
       setCanvasResizeState(null)
     }
-  }, [dragState, canvasResizeState, layoutItems, saveToHistory])
+  }, [dragState, canvasResizeState, layoutItems, saveToHistory, canvasSize, template, onTemplateChange])
 
   const handleItemUpdate = (key, value) => {
     if (!selectedItem) return
@@ -134,6 +142,11 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
 
   const handleCanvasClick = () => {
     setSelectedItem(null)
+  }
+
+  const handleCanvasSizeChange = (newSize) => {
+    setCanvasSize(newSize)
+    onTemplateChange({ ...template, canvasSize: newSize })
   }
 
   const handleSave = () => {
@@ -232,10 +245,10 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
           </Tooltip>
           <Text style={{ marginLeft: 8, fontSize: 12 }}>{zoom}%</Text>
           <Divider type="vertical" />
-          <Text style={{ fontSize: 12 }}>画布:</Text>
+          <Text style={{ fontSize: 12 }}>酒单尺寸:</Text>
           <InputNumber
             value={canvasSize.width}
-            onChange={(v) => setCanvasSize({ ...canvasSize, width: v })}
+            onChange={(v) => handleCanvasSizeChange({ ...canvasSize, width: v })}
             min={300}
             max={1200}
             size="small"
@@ -244,7 +257,7 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
           <Text style={{ fontSize: 12 }}>x</Text>
           <InputNumber
             value={canvasSize.height}
-            onChange={(v) => setCanvasSize({ ...canvasSize, height: v })}
+            onChange={(v) => handleCanvasSizeChange({ ...canvasSize, height: v })}
             min={300}
             max={1200}
             size="small"
@@ -327,24 +340,60 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
               onClick={handleCanvasClick}
             >
               {layoutItems.map(item => renderLayoutItem(item))}
-              {/* 画布尺寸拖拽手柄 */}
+              {/* 右边拖拽手柄 - 单独调整宽度 */}
               <div
                 style={{
                   position: 'absolute',
-                  right: -6,
-                  bottom: -6,
-                  width: 14,
-                  height: 14,
-                  backgroundColor: '#52c41a',
-                  cursor: 'nwse-resize',
-                  borderRadius: 2,
+                  right: -5,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 10,
+                  height: 48,
+                  backgroundColor: '#1677ff',
+                  cursor: 'ew-resize',
+                  borderRadius: '5px 0 0 5px',
                   zIndex: 1000,
                   border: '2px solid white',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  boxShadow: '0 2px 8px rgba(22,119,255,0.4)',
                 }}
-                onMouseDown={handleCanvasResizeStart}
+                onMouseDown={(e) => handleCanvasResizeStart(e, 'width')}
               />
-              {/* 画布尺寸显示 */}
+              {/* 下边拖拽手柄 - 单独调整高度 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: -5,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 48,
+                  height: 10,
+                  backgroundColor: '#1677ff',
+                  cursor: 'ns-resize',
+                  borderRadius: '0 0 5px 5px',
+                  zIndex: 1000,
+                  border: '2px solid white',
+                  boxShadow: '0 2px 8px rgba(22,119,255,0.4)',
+                }}
+                onMouseDown={(e) => handleCanvasResizeStart(e, 'height')}
+              />
+              {/* 右下角拖拽手柄 - 同时调整宽高 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  right: -7,
+                  bottom: -7,
+                  width: 18,
+                  height: 18,
+                  backgroundColor: '#52c41a',
+                  cursor: 'nwse-resize',
+                  borderRadius: 3,
+                  zIndex: 1000,
+                  border: '2px solid white',
+                  boxShadow: '0 3px 8px rgba(82,196,26,0.5)',
+                }}
+                onMouseDown={(e) => handleCanvasResizeStart(e, 'corner')}
+              />
+              {/* 酒单尺寸显示 */}
               <div
                 style={{
                   position: 'absolute',
@@ -359,7 +408,7 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
                   zIndex: 999,
                 }}
               >
-                {canvasSize.width} x {canvasSize.height}
+                酒单尺寸: {canvasSize.width} x {canvasSize.height}
               </div>
             </div>
           </div>
@@ -470,7 +519,42 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
             </>
           ) : (
             <div className="no-selection">
-              <Text type="secondary" style={{ fontSize: 12 }}>点击元素进行编辑</Text>
+              <div style={{ textAlign: 'center' }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 16 }}>
+                  点击元素进行编辑
+                </Text>
+                <Divider style={{ margin: '12px 0' }} />
+                <div className="panel-header" style={{ textAlign: 'left' }}>酒单尺寸</div>
+                <div className="property-panel" style={{ textAlign: 'left' }}>
+                  <div className="property-row">
+                    <div className="property-field">
+                      <Text style={{ fontSize: 12 }}>宽</Text>
+                      <InputNumber
+                        value={canvasSize.width}
+                        onChange={(v) => handleCanvasSizeChange({ ...canvasSize, width: v })}
+                        min={200}
+                        max={1200}
+                        size="small"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div className="property-field">
+                      <Text style={{ fontSize: 12 }}>高</Text>
+                      <InputNumber
+                        value={canvasSize.height}
+                        onChange={(v) => handleCanvasSizeChange({ ...canvasSize, height: v })}
+                        min={200}
+                        max={1200}
+                        size="small"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 10 }}>
+                    右边蓝色手柄拖拽调宽度，下边手柄调高度，右下角绿色手柄同时调整宽高
+                  </Text>
+                </div>
+              </div>
             </div>
           )}
         </div>
