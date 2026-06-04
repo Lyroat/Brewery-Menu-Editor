@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button, Card, ColorPicker, Input, List, Modal, Select, Space, Typography, message } from 'antd'
-import { SaveOutlined, FolderOpenOutlined, EditOutlined } from '@ant-design/icons'
+import { Button, Card, ColorPicker, Input, List, Modal, Select, Slider, Space, Typography, Upload, message, Image } from 'antd'
+import { SaveOutlined, FolderOpenOutlined, EditOutlined, UploadOutlined, DeleteOutlined } from '@ant-design/icons'
 import TemplateEditor from './TemplateEditor'
 
 const { Text } = Typography
@@ -98,6 +98,61 @@ export default function TemplateManager({
                 ]}
                 style={{ width: 200 }}
               />
+            </div>
+            <div className="template-setting">
+              <Text>背景图片:</Text>
+              <Space direction="vertical" size="small">
+                <Upload
+                  beforeUpload={(file) => {
+                    const reader = new FileReader()
+                    reader.onload = (e) => {
+                      onTemplateChange({ ...currentTemplate, backgroundImage: e.target.result })
+                      message.success('背景图片已设置')
+                    }
+                    reader.readAsDataURL(file)
+                    return false
+                  }}
+                  showUploadList={false}
+                  accept="image/*"
+                >
+                  <Button icon={<UploadOutlined />} size="small">
+                    {currentTemplate.backgroundImage ? '更换图片' : '上传背景图'}
+                  </Button>
+                </Upload>
+                {currentTemplate.backgroundImage && (
+                  <>
+                    <Space size="small">
+                      <Image
+                        src={currentTemplate.backgroundImage}
+                        width={40}
+                        height={40}
+                        style={{ objectFit: 'cover', borderRadius: 4 }}
+                        preview={{ mask: null }}
+                      />
+                      <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => onTemplateChange({ ...currentTemplate, backgroundImage: '' })}
+                      >
+                        移除
+                      </Button>
+                    </Space>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>透明度:</Text>
+                      <Slider
+                        value={Math.round((currentTemplate.backgroundOpacity ?? 0.15) * 100)}
+                        onChange={(v) => onTemplateChange({ ...currentTemplate, backgroundOpacity: v / 100 })}
+                        min={5}
+                        max={50}
+                        style={{ width: 100, margin: 0 }}
+                        size="small"
+                      />
+                      <Text style={{ fontSize: 12 }}>{Math.round((currentTemplate.backgroundOpacity ?? 0.15) * 100)}%</Text>
+                    </div>
+                  </>
+                )}
+              </Space>
             </div>
             <Space>
               <Button

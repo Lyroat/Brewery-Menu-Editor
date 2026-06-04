@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Button, ColorPicker, InputNumber, Space, Slider, Typography, message, Tooltip, Divider } from 'antd'
+import { Button, ColorPicker, InputNumber, Input, Space, Slider, Typography, message, Tooltip, Divider, Select } from 'antd'
 import {
   SaveOutlined, UndoOutlined, RedoOutlined,
   AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined,
@@ -10,15 +10,15 @@ import {
 const { Text } = Typography
 
 const defaultLayoutItems = [
-  { id: 'title', label: '标题', type: 'title', x: 20, y: 20, width: 360, height: 60, fontSize: 36, fontWeight: 'bold', textAlign: 'center', color: '#ffffff' },
-  { id: 'brand', label: '厂牌', type: 'field', x: 20, y: 100, width: 180, height: 40, fontSize: 14, fontWeight: 'normal', textAlign: 'left', color: '#e94560' },
-  { id: 'name', label: '款名', type: 'field', x: 20, y: 150, width: 250, height: 50, fontSize: 20, fontWeight: 'bold', textAlign: 'left', color: '#ffffff' },
-  { id: 'style', label: '风格', type: 'field', x: 20, y: 210, width: 200, height: 30, fontSize: 14, fontWeight: 'normal', textAlign: 'left', color: '#ffffff' },
-  { id: 'styleEn', label: '风格（英文）', type: 'field', x: 20, y: 250, width: 200, height: 25, fontSize: 12, fontWeight: 'normal', textAlign: 'left', color: '#999999' },
-  { id: 'origin', label: '产地', type: 'field', x: 20, y: 290, width: 100, height: 30, fontSize: 13, fontWeight: 'normal', textAlign: 'left', color: '#ffffff' },
-  { id: 'abv', label: '酒精度', type: 'field', x: 130, y: 290, width: 100, height: 30, fontSize: 13, fontWeight: 'normal', textAlign: 'left', color: '#ffffff' },
-  { id: 'price', label: '定价', type: 'field', x: 280, y: 100, width: 100, height: 50, fontSize: 24, fontWeight: 'bold', textAlign: 'right', color: '#e94560' },
-  { id: 'image', label: '宣传图片', type: 'image', x: 280, y: 160, width: 100, height: 120, fontSize: 12, fontWeight: 'normal', textAlign: 'center', color: '#ffffff' },
+  { id: 'title', label: '标题', type: 'title', text: '精酿酒单', x: 20, y: 20, width: 360, height: 60, fontSize: 36, fontFamily: 'sans-serif', fontWeight: 'bold', textAlign: 'center', color: '#ffffff' },
+  { id: 'brand', label: '厂牌', type: 'field', text: '厂牌名', x: 20, y: 100, width: 180, height: 40, fontSize: 14, fontFamily: 'sans-serif', fontWeight: 'normal', textAlign: 'left', color: '#e94560' },
+  { id: 'name', label: '款名', type: 'field', text: '啤酒名称', x: 20, y: 150, width: 250, height: 50, fontSize: 20, fontFamily: 'sans-serif', fontWeight: 'bold', textAlign: 'left', color: '#ffffff' },
+  { id: 'style', label: '风格', type: 'field', text: '啤酒风格', x: 20, y: 210, width: 200, height: 30, fontSize: 14, fontFamily: 'sans-serif', fontWeight: 'normal', textAlign: 'left', color: '#ffffff' },
+  { id: 'styleEn', label: '风格（英文）', type: 'field', text: 'Style Name', x: 20, y: 250, width: 200, height: 25, fontSize: 12, fontFamily: 'sans-serif', fontWeight: 'normal', textAlign: 'left', color: '#999999' },
+  { id: 'origin', label: '产地', type: 'field', text: '产地', x: 20, y: 290, width: 100, height: 30, fontSize: 13, fontFamily: 'sans-serif', fontWeight: 'normal', textAlign: 'left', color: '#ffffff' },
+  { id: 'abv', label: '酒精度', type: 'field', text: '5.0%', x: 130, y: 290, width: 100, height: 30, fontSize: 13, fontFamily: 'sans-serif', fontWeight: 'normal', textAlign: 'left', color: '#ffffff' },
+  { id: 'price', label: '定价', type: 'field', text: '¥38', x: 280, y: 100, width: 100, height: 50, fontSize: 24, fontFamily: 'sans-serif', fontWeight: 'bold', textAlign: 'right', color: '#e94560' },
+  { id: 'image', label: '宣传图片', type: 'image', text: '', x: 280, y: 160, width: 100, height: 120, fontSize: 12, fontFamily: 'sans-serif', fontWeight: 'normal', textAlign: 'center', color: '#ffffff' },
 ]
 
 export default function TemplateEditor({ template, onTemplateChange, onSave }) {
@@ -185,21 +185,23 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
           userSelect: 'none',
         }}
         onMouseDown={(e) => handleMouseDown(e, item, 'move')}
+        onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
             fontSize: item.fontSize,
+            fontFamily: item.fontFamily || template.fontFamily,
             fontWeight: item.fontWeight,
             textAlign: item.textAlign,
             color: item.color || template.textColor,
             width: '100%',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            whiteSpace: item.type === 'image' ? 'normal' : 'nowrap',
             pointerEvents: 'none',
           }}
         >
-          {item.type === 'title' ? '精酿酒单' : item.type === 'image' ? '📷 图片' : `{${item.label}}`}
+          {item.type === 'image' ? '📷 图片' : (item.text || `{${item.label}}`)}
         </div>
         {isSelected && (
           <div
@@ -339,6 +341,20 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
               }}
               onClick={handleCanvasClick}
             >
+              {template.backgroundImage && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundImage: `url(${template.backgroundImage})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    opacity: template.backgroundOpacity ?? 0.15,
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                  }}
+                />
+              )}
               {layoutItems.map(item => renderLayoutItem(item))}
               {/* 右边拖拽手柄 - 单独调整宽度 */}
               <div
@@ -357,6 +373,7 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
                   boxShadow: '0 2px 8px rgba(22,119,255,0.4)',
                 }}
                 onMouseDown={(e) => handleCanvasResizeStart(e, 'width')}
+                onClick={(e) => e.stopPropagation()}
               />
               {/* 下边拖拽手柄 - 单独调整高度 */}
               <div
@@ -375,6 +392,7 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
                   boxShadow: '0 2px 8px rgba(22,119,255,0.4)',
                 }}
                 onMouseDown={(e) => handleCanvasResizeStart(e, 'height')}
+                onClick={(e) => e.stopPropagation()}
               />
               {/* 右下角拖拽手柄 - 同时调整宽高 */}
               <div
@@ -392,6 +410,7 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
                   boxShadow: '0 3px 8px rgba(82,196,26,0.5)',
                 }}
                 onMouseDown={(e) => handleCanvasResizeStart(e, 'corner')}
+                onClick={(e) => e.stopPropagation()}
               />
               {/* 酒单尺寸显示 */}
               <div
@@ -418,8 +437,24 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
         <div className="template-editor-properties">
           {selectedItem ? (
             <>
-              <div className="panel-header">属性设置</div>
+              <div className="panel-header">属性设置 - {selectedItem.label}</div>
               <div className="property-panel">
+                {selectedItem.type !== 'image' && (
+                  <div className="property-group">
+                    <Text type="secondary" style={{ fontSize: 12 }}>文案内容</Text>
+                    <div className="property-field">
+                      <Input.TextArea
+                        value={selectedItem.text || ''}
+                        onChange={(e) => handleItemUpdate('text', e.target.value)}
+                        placeholder="输入文案内容"
+                        rows={2}
+                        size="small"
+                        style={{ fontSize: 12 }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <Divider style={{ margin: '10px 0' }} />
                 <div className="property-group">
                   <Text type="secondary" style={{ fontSize: 12 }}>位置与尺寸</Text>
                   <div className="property-row">
@@ -470,6 +505,21 @@ export default function TemplateEditor({ template, onTemplateChange, onSave }) {
 
                 <div className="property-group">
                   <Text type="secondary" style={{ fontSize: 12 }}>文字样式</Text>
+                  <div className="property-field">
+                    <Text style={{ fontSize: 12 }}>字体</Text>
+                    <Select
+                      value={selectedItem.fontFamily || template.fontFamily}
+                      onChange={(v) => handleItemUpdate('fontFamily', v)}
+                      options={[
+                        { label: '无衬线', value: 'sans-serif' },
+                        { label: '衬线', value: 'serif' },
+                        { label: '等宽', value: 'monospace' },
+                        { label: '手写', value: 'cursive' },
+                      ]}
+                      size="small"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
                   <div className="property-field">
                     <Text style={{ fontSize: 12 }}>字号: {selectedItem.fontSize}px</Text>
                     <Slider

@@ -29,6 +29,8 @@ const defaultTemplate = {
   fontFamily: 'sans-serif',
   layout: 'card',
   canvasSize: { width: 400, height: 500 },
+  backgroundImage: '',
+  backgroundOpacity: 0.15,
 }
 
 const sampleMenus = [
@@ -98,10 +100,31 @@ const createNewMenu = (name = '新酒单') => ({
 
 function App() {
   const [user, setUser] = useState(null)
-  const [menus, setMenus] = useState(sampleMenus)
-  const [activeMenuId, setActiveMenuId] = useState(sampleMenus[0].id)
-  const [templates, setTemplates] = useState([defaultTemplate])
+  const [menus, setMenus] = useState(() => {
+    const saved = localStorage.getItem('menu_editor_menus')
+    return saved ? JSON.parse(saved) : sampleMenus
+  })
+  const [activeMenuId, setActiveMenuId] = useState(() => {
+    const savedMenus = localStorage.getItem('menu_editor_menus')
+    if (savedMenus) {
+      const parsed = JSON.parse(savedMenus)
+      return parsed.length > 0 ? parsed[0].id : sampleMenus[0].id
+    }
+    return sampleMenus[0].id
+  })
+  const [templates, setTemplates] = useState(() => {
+    const saved = localStorage.getItem('menu_editor_templates')
+    return saved ? JSON.parse(saved) : [defaultTemplate]
+  })
   const [activeTab, setActiveTab] = useState('edit')
+
+  useEffect(() => {
+    localStorage.setItem('menu_editor_menus', JSON.stringify(menus))
+  }, [menus])
+
+  useEffect(() => {
+    localStorage.setItem('menu_editor_templates', JSON.stringify(templates))
+  }, [templates])
 
   useEffect(() => {
     const savedUser = localStorage.getItem('menu_editor_current_user')
@@ -109,6 +132,61 @@ function App() {
       setUser(JSON.parse(savedUser))
     }
   }, [])
+
+  const [undoStack, setUndoStack] = useState([])
+  const [redoStack, setRedoStack] = useState([])
+
+  const pushUndo = () => {
+    const menu = menus.find(m => m.id === activeMenuId)
+    if (menu) {
+      setUndoStack(prev => [...prev.slice(-49), {
+        items: JSON.parse(JSON.stringify(menu.items)),
+        fields: JSON.parse(JSON.stringify(menu.fields)),
+      }])
+      setRedoStack([])
+    }
+  }
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return
+    const menu = menus.find(m => m.id === activeMenuId)
+    const prevState = undoStack[undoStack.length - 1]
+    setRedoStack(prev => [...prev, {
+      items: JSON.parse(JSON.stringify(menu.items)),
+      fields: JSON.parse(JSON.stringify(menu.fields)),
+    }])
+    updateActiveMenu({ items: prevState.items, fields: prevState.fields })
+    setUndoStack(prev => prev.slice(0, -1))
+    message.info('已撤销')
+  }
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return
+    const menu = menus.find(m => m.id === activeMenuId)
+    const nextState = redoStack[redoStack.length - 1]
+    setUndoStack(prev => [...prev, {
+      items: JSON.parse(JSON.stringify(menu.items)),
+      fields: JSON.parse(JSON.stringify(menu.fields)),
+    }])
+    updateActiveMenu({ items: nextState.items, fields: nextState.fields })
+    setRedoStack(prev => prev.slice(0, -1))
+    message.info('已重做')
+  }
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (activeTab !== 'edit') return
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault()
+        handleRedo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [undoStack, redoStack, activeTab, activeMenuId, menus])
 
   const handleLogin = (userData) => {
     setUser(userData)
@@ -129,6 +207,7 @@ function App() {
   }
 
   const handleAddItem = () => {
+    pushUndo()
     const newItem = {}
     activeMenu.fields.forEach(f => {
       newItem[f.key] = f.type === 'number' ? 0 : ''
@@ -143,10 +222,12 @@ function App() {
   }
 
   const handleDeleteItem = (index) => {
+    pushUndo()
     updateActiveMenu({ items: activeMenu.items.filter((_, i) => i !== index) })
   }
 
   const handleAddField = (field) => {
+    pushUndo()
     updateActiveMenu({
       fields: [...activeMenu.fields, field],
       items: activeMenu.items.map(item => ({ ...item, [field.key]: '' })),
@@ -154,6 +235,7 @@ function App() {
   }
 
   const handleDeleteField = (key) => {
+    pushUndo()
     updateActiveMenu({
       fields: activeMenu.fields.filter(f => f.key !== key),
       items: activeMenu.items.map(item => {
@@ -176,6 +258,7 @@ function App() {
   }
 
   const handleImportItems = (items) => {
+    pushUndo()
     updateActiveMenu({ items: [...activeMenu.items, ...items] })
   }
 
@@ -203,6 +286,8 @@ function App() {
   const handleEditMenu = (menuId) => {
     setActiveMenuId(menuId)
     setActiveTab('edit')
+    setUndoStack([])
+    setRedoStack([])
   }
 
   const handleGenerate = () => {
@@ -242,6 +327,10 @@ function App() {
           onImportItems={handleImportItems}
           menuName={activeMenu.name}
           onMenuNameChange={(name) => updateActiveMenu({ name })}
+          canUndo={undoStack.length > 0}
+          canRedo={redoStack.length > 0}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
         />
       ),
     },

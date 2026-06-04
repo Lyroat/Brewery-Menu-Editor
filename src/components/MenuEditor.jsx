@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Table, Button, Input, InputNumber, Select, Space, Modal, Form, Popconfirm, Upload, Card, List, Tag, message } from 'antd'
-import { PlusOutlined, DeleteOutlined, UploadOutlined, BgColorsOutlined, PlayCircleOutlined, FileExcelOutlined, DownloadOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, UploadOutlined, BgColorsOutlined, PlayCircleOutlined, FileExcelOutlined, DownloadOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 
 export default function MenuEditor({
@@ -18,6 +18,10 @@ export default function MenuEditor({
   onImportItems,
   menuName,
   onMenuNameChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }) {
   const [addFieldVisible, setAddFieldVisible] = useState(false)
   const [templateVisible, setTemplateVisible] = useState(false)
@@ -249,6 +253,22 @@ export default function MenuEditor({
             选择模板
           </Button>
           <Tag color="blue">模板: {currentTemplate.name}</Tag>
+          <Button
+            icon={<UndoOutlined />}
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="撤销 (Ctrl+Z)"
+          >
+            撤销
+          </Button>
+          <Button
+            icon={<RedoOutlined />}
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="重做 (Ctrl+Shift+Z)"
+          >
+            重做
+          </Button>
         </Space>
         <Space>
           <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
