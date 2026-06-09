@@ -1,12 +1,264 @@
-import { useState } from 'react'
-import { Table, Button, Input, InputNumber, Select, Space, Modal, Form, Popconfirm, Upload, Card, List, Tag, message } from 'antd'
+import { useState, useRef, useCallback } from 'react'
+import { Table, Button, Input, InputNumber, Select, Space, Modal, Form, Popconfirm, Upload, ColorPicker, message } from 'antd'
 import { PlusOutlined, DeleteOutlined, UploadOutlined, BgColorsOutlined, PlayCircleOutlined, FileExcelOutlined, DownloadOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
+import { extractPalette } from '../utils/extractPalette'
+
+const FIELD_PRESETS = [
+  { label: '厂牌', key: 'brand', type: 'text' },
+  { label: '产地', key: 'origin', type: 'text' },
+  { label: '啤酒商品名', key: 'name', type: 'text' },
+  { label: '类型（中文）', key: 'style', type: 'text' },
+  { label: '类型（英文）', key: 'styleEn', type: 'text' },
+  { label: '啤酒花', key: 'hops', type: 'text' },
+  { label: '酒精度', key: 'abv', type: 'number', unit: '%' },
+  { label: '杯型大小', key: 'cupType', type: 'text' },
+  { label: '毫升', key: 'ml', type: 'number', unit: 'mL' },
+  { label: '售价', key: 'price', type: 'number', unit: '¥' },
+  { label: '宣传图', key: 'image', type: 'image' },
+]
+
+const FIELD_ORDER = FIELD_PRESETS.map(p => p.key)
+
+const SIZE_PRESETS = [
+  { label: 'A4 竖排版（单列）', value: 'a4-portrait-1', width: 794, height: 1123, cols: 1 },
+  { label: 'A4 竖排版（双列）', value: 'a4-portrait-2', width: 794, height: 1123, cols: 2 },
+  { label: 'A4 横排版（双列）', value: 'a4-landscape-2', width: 1123, height: 794, cols: 2 },
+  { label: 'A4 横排版（三列）', value: 'a4-landscape-3', width: 1123, height: 794, cols: 3 },
+  { label: '自定义尺寸', value: 'custom', width: 800, height: 1000, cols: 1 },
+]
+
+function CropArea({ image, cropX: initX, cropY: initY, cropW: initW, cropH: initH, onChange }) {
+  const containerRef = useRef(null)
+  const imgRef = useRef(null)
+  const [imgRect, setImgRect] = useState(null)
+  const [box, setBox] = useState({ x: initX ?? 0, y: initY ?? 0, w: initW ?? 100, h: initH ?? 100 })
+  const dragRef = useRef(null)
+  const latestBox = useRef(box)
+  latestBox.current = box
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+
+  const commitBox = useCallback((b) => {
+    onChange(Math.round(b.x), Math.round(b.y), Math.round(b.w), Math.round(b.h))
+  }, [onChange])
+
+  const handleImgLoad = () => {
+    if (!imgRef.current || !containerRef.current) return
+    const img = imgRef.current
+    const container = containerRef.current
+    const cRect = container.getBoundingClientRect()
+    const iw = img.naturalWidth
+    const ih = img.naturalHeight
+    const cw = cRect.width
+    const ch = cRect.height
+    const scale = Math.min(cw / iw, ch / ih)
+    const dw = iw * scale
+    const dh = ih * scale
+    const dx = (cw - dw) / 2
+    const dy = (ch - dh) / 2
+    setImgRect({ dx, dy, dw, dh, natW: iw, natH: ih })
+  }
+
+  const getSquarePx = () => {
+    if (!imgRect) return null
+    const sidePx = (box.w / 100) * imgRect.dw
+    return {
+      left: imgRect.dx + (box.x / 100) * imgRect.dw,
+      top: imgRect.dy + (box.y / 100) * imgRect.dh,
+      width: sidePx,
+      height: sidePx,
+    }
+  }
+
+  const boxPx = getSquarePx()
+
+  const handleMouseDown = useCallback((e, type) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!imgRect) return
+    dragRef.current = {
+      type,
+      startX: e.clientX,
+      startY: e.clientY,
+      startBox: { ...latestBox.current },
+      imgW: imgRect.dw,
+      imgH: imgRect.dh,
+      natW: imgRect.natW,
+      natH: imgRect.natH,
+    }
+    const handleMove = (ev) => {
+      if (!dragRef.current) return
+      const { type: t, startX, startY, startBox: sb, imgW, imgH, natW, natH } = dragRef.current
+      const dxPx = ev.clientX - startX
+      const dyPx = ev.clientY - startY
+      const dxPct = (dxPx / imgW) * 100
+      const dyPct = (dyPx / imgH) * 100
+      const maxH = (sb.w / 100 * natW) / natH * 100
+
+      let newBox
+      if (t === 'move') {
+        const currentH = (sb.w / 100 * natW) / natH * 100
+        newBox = {
+          w: sb.w,
+          h: currentH,
+          x: clamp(sb.x + dxPct, 0, 100 - sb.w),
+          y: clamp(sb.y + dyPct, 0, 100 - currentH),
+        }
+      } else {
+        const delta = (Math.abs(dxPx) > Math.abs(dyPx)) ? dxPct : dyPct * (natH / natW) * (imgW / imgH) * (natW / natH)
+        let nw
+        if (t === 'nw' || t === 'sw') {
+          nw = clamp(sb.w - dxPct, 10, 100)
+        } else {
+          nw = clamp(sb.w + dxPct, 10, 100)
+        }
+        const nh = (nw / 100 * natW) / natH * 100
+        if (nh > 100) {
+          nw = (100 * natH) / natW * 100 / 100 * (100 / 100)
+        }
+        const finalW = nh > 100 ? 100 * natH / natW : nw
+        const finalH = (finalW / 100 * natW) / natH * 100
+
+        let nx = sb.x
+        let ny = sb.y
+        if (t === 'nw') {
+          nx = sb.x + sb.w - finalW
+          ny = sb.y + sb.h - finalH
+        } else if (t === 'ne') {
+          ny = sb.y + sb.h - finalH
+        } else if (t === 'sw') {
+          nx = sb.x + sb.w - finalW
+        }
+        nx = clamp(nx, 0, 100 - finalW)
+        ny = clamp(ny, 0, 100 - finalH)
+        newBox = { x: nx, y: ny, w: finalW, h: finalH }
+      }
+      if (newBox) {
+        setBox(newBox)
+        latestBox.current = newBox
+      }
+    }
+    const handleUp = () => {
+      commitBox(latestBox.current)
+      dragRef.current = null
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }, [imgRect, commitBox])
+
+  const cornerStyle = (pos) => ({
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    background: '#fff',
+    border: '2px solid #1890ff',
+    borderRadius: 2,
+    zIndex: 10,
+    ...(pos === 'nw' ? { top: -7, left: -7, cursor: 'nwse-resize' } : {}),
+    ...(pos === 'ne' ? { top: -7, right: -7, cursor: 'nesw-resize' } : {}),
+    ...(pos === 'sw' ? { bottom: -7, left: -7, cursor: 'nesw-resize' } : {}),
+    ...(pos === 'se' ? { bottom: -7, right: -7, cursor: 'nwse-resize' } : {}),
+  })
+
+  return (
+    <div>
+      <p style={{ margin: '0 0 12px', color: '#666', fontSize: 13 }}>
+        拖动方框移动，拖动四角放大/缩小选区（始终正方形）
+      </p>
+      <div
+        ref={containerRef}
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: 380,
+          overflow: 'hidden',
+          border: '1px solid #d9d9d9',
+          borderRadius: 6,
+          userSelect: 'none',
+          background: '#1a1a1a',
+        }}
+      >
+        <img
+          ref={imgRef}
+          src={image}
+          alt=""
+          onLoad={handleImgLoad}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', display: 'block' }}
+        />
+        {imgRect && boxPx && (
+          <>
+            {/* Dark overlay using clip-path based on image-relative percentages */}
+            <div style={{
+              position: 'absolute',
+              left: imgRect.dx,
+              top: imgRect.dy,
+              width: imgRect.dw,
+              height: imgRect.dh,
+              background: 'rgba(0,0,0,0.55)',
+              pointerEvents: 'none',
+              clipPath: `polygon(0% 0%, 0% 100%, ${box.x}% 100%, ${box.x}% ${box.y}%, ${box.x + box.w}% ${box.y}%, ${box.x + box.w}% ${box.y + box.h}%, ${box.x}% ${box.y + box.h}%, ${box.x}% 100%, 100% 100%, 100% 0%)`,
+            }} />
+            {/* Crop box */}
+            <div
+              style={{
+                position: 'absolute',
+                left: boxPx.left,
+                top: boxPx.top,
+                width: boxPx.width,
+                height: boxPx.height,
+                border: '2px dashed rgba(255,255,255,0.9)',
+                boxShadow: '0 0 0 1px rgba(0,0,0,0.5)',
+                cursor: 'move',
+              }}
+              onMouseDown={(e) => handleMouseDown(e, 'move')}
+            >
+              <div style={cornerStyle('nw')} onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'nw') }} />
+              <div style={cornerStyle('ne')} onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'ne') }} />
+              <div style={cornerStyle('sw')} onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'sw') }} />
+              <div style={cornerStyle('se')} onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'se') }} />
+            </div>
+          </>
+        )}
+      </div>
+      {/* Preview */}
+      <div style={{ marginTop: 12, display: 'flex', gap: 24, justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 120,
+            height: 120,
+            overflow: 'hidden',
+            position: 'relative',
+            border: '1px solid #ddd',
+            borderRadius: 4,
+            display: 'inline-block',
+            background: '#f5f5f5',
+          }}>
+            <img
+              src={image}
+              alt="preview"
+              style={{
+                position: 'absolute',
+                width: `${(100 / box.w) * 100}%`,
+                height: `${(100 / box.h) * 100}%`,
+                left: `${-(box.x / box.w) * 100}%`,
+                top: `${-(box.y / box.h) * 100}%`,
+                maxWidth: 'none',
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>取景预览</div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function MenuEditor({
   menuItems,
   fields,
-  templates,
   currentTemplate,
   onAddItem,
   onUpdateItem,
@@ -24,16 +276,17 @@ export default function MenuEditor({
   onRedo,
 }) {
   const [addFieldVisible, setAddFieldVisible] = useState(false)
-  const [templateVisible, setTemplateVisible] = useState(false)
+  const [cropModalIndex, setCropModalIndex] = useState(null)
   const [form] = Form.useForm()
 
   const handleAddField = () => {
     form.validateFields().then(values => {
+      const preset = FIELD_PRESETS.find(p => p.label === values.label)
       onAddField({
-        key: values.key,
+        key: preset?.key || values.label,
         label: values.label,
         type: values.type,
-        options: values.type === 'select' ? values.options?.split(',').map(s => s.trim()) : undefined,
+        unit: preset?.unit,
       })
       form.resetFields()
       setAddFieldVisible(false)
@@ -42,18 +295,20 @@ export default function MenuEditor({
 
   const handleImageUpload = (index, file) => {
     const reader = new FileReader()
-    reader.onload = (e) => {
-      onUpdateItem(index, 'image', e.target.result)
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result
+      const palette = await extractPalette(dataUrl)
+      onUpdateItem(index, {
+        image: dataUrl,
+        _imageColor: palette?.primary || undefined,
+        _imageColorSecondary: palette?.secondary || undefined,
+        _imageColorDark: palette?.dark || undefined,
+      })
     }
     reader.readAsDataURL(file)
     return false
   }
 
-  const handleSelectTemplate = (tmpl) => {
-    onTemplateChange(tmpl)
-    setTemplateVisible(false)
-    message.success(`已选择模板: ${tmpl.name}`)
-  }
 
   const handleDownloadTemplate = () => {
     const headers = fields
@@ -161,7 +416,13 @@ export default function MenuEditor({
     message.success('酒单已生成，请查看预览')
   }
 
-  const columns = fields.map(field => ({
+  const sortedFields = [...fields].sort((a, b) => {
+    const ai = FIELD_ORDER.indexOf(a.key)
+    const bi = FIELD_ORDER.indexOf(b.key)
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+  })
+
+  const columns = sortedFields.map(field => ({
     title: (
       <Space>
         {field.label}
@@ -181,17 +442,46 @@ export default function MenuEditor({
     render: (text, record, index) => {
       if (field.type === 'image') {
         return (
-          <Upload
-            beforeUpload={(file) => handleImageUpload(index, file)}
-            showUploadList={false}
-            accept="image/*"
-          >
-            {text ? (
-              <img src={text} alt="" style={{ width: 80, height: 80, objectFit: 'cover' }} />
-            ) : (
-              <Button icon={<UploadOutlined />} size="small">上传</Button>
+          <Space direction="vertical" size={4}>
+            <Upload
+              beforeUpload={(file) => handleImageUpload(index, file)}
+              showUploadList={false}
+              accept="image/*"
+            >
+              {text ? (() => {
+                const cw = record._cropW || 100
+                const ch = record._cropH || 100
+                return (
+                  <div style={{ width: 80, height: 80, position: 'relative', overflow: 'hidden', cursor: 'pointer' }}>
+                    <img
+                      src={text}
+                      alt=""
+                      style={{
+                        position: 'absolute',
+                        width: `${(100 / cw) * 100}%`,
+                        height: `${(100 / ch) * 100}%`,
+                        left: `${-((record._cropX || 0) / cw) * 100}%`,
+                        top: `${-((record._cropY || 0) / ch) * 100}%`,
+                        maxWidth: 'none',
+                      }}
+                    />
+                  </div>
+                )
+              })() : (
+                <Button icon={<UploadOutlined />} size="small">上传</Button>
+              )}
+            </Upload>
+            {text && (
+              <Space size={4}>
+                <Button size="small" type="link" onClick={() => setCropModalIndex(index)} style={{ padding: 0, fontSize: 11 }}>
+                  调整取景
+                </Button>
+                <Button size="small" type="link" danger onClick={() => onUpdateItem(index, { image: '', _imageColor: undefined, _imageColorSecondary: undefined, _imageColorDark: undefined, _cropX: undefined, _cropY: undefined, _cropW: undefined, _cropH: undefined })} style={{ padding: 0, fontSize: 11 }}>
+                  删除
+                </Button>
+              </Space>
             )}
-          </Upload>
+          </Space>
         )
       }
       if (field.type === 'number') {
@@ -200,6 +490,8 @@ export default function MenuEditor({
             value={text}
             onChange={(value) => onUpdateItem(index, field.key, value)}
             style={{ width: '100%' }}
+            addonAfter={field.unit === '¥' ? undefined : field.unit}
+            prefix={field.unit === '¥' ? '¥' : undefined}
           />
         )
       }
@@ -239,20 +531,85 @@ export default function MenuEditor({
   return (
     <div className="menu-editor">
       <div className="editor-toolbar">
-        <Space>
+        <Space wrap>
           <Input
             value={menuName}
             onChange={(e) => onMenuNameChange(e.target.value)}
-            style={{ width: 200, fontWeight: 'bold' }}
+            style={{ width: 160, fontWeight: 'bold' }}
             placeholder="酒单名称"
           />
-          <Button
-            icon={<BgColorsOutlined />}
-            onClick={() => setTemplateVisible(true)}
-          >
-            选择模板
-          </Button>
-          <Tag color="blue">模板: {currentTemplate.name}</Tag>
+          <Space size="small">
+            <span>尺寸:</span>
+            <Select
+              value={currentTemplate.sizePreset || 'a4-portrait-1'}
+              onChange={(val) => {
+                const preset = SIZE_PRESETS.find(p => p.value === val)
+                if (val === 'custom') {
+                  onTemplateChange({ ...currentTemplate, sizePreset: val, canvasSize: currentTemplate.canvasSize || { width: 800, height: 1000 }, cols: currentTemplate.cols || 1 })
+                } else {
+                  onTemplateChange({ ...currentTemplate, sizePreset: val, canvasSize: { width: preset.width, height: preset.height }, cols: preset.cols })
+                }
+              }}
+              style={{ width: 160 }}
+              options={SIZE_PRESETS.map(p => ({ label: p.label, value: p.value }))}
+            />
+            {currentTemplate.sizePreset === 'custom' && (
+              <>
+                <InputNumber
+                  value={currentTemplate.canvasSize?.width || 800}
+                  onChange={(v) => onTemplateChange({ ...currentTemplate, canvasSize: { ...currentTemplate.canvasSize, width: v } })}
+                  style={{ width: 70 }}
+                  min={200}
+                  max={3000}
+                  size="small"
+                />
+                <span>×</span>
+                <InputNumber
+                  value={currentTemplate.canvasSize?.height || 1000}
+                  onChange={(v) => onTemplateChange({ ...currentTemplate, canvasSize: { ...currentTemplate.canvasSize, height: v } })}
+                  style={{ width: 70 }}
+                  min={200}
+                  max={3000}
+                  size="small"
+                />
+                <span style={{ fontSize: 11, color: '#999' }}>px</span>
+                <Select
+                  value={currentTemplate.cols || 1}
+                  onChange={(v) => onTemplateChange({ ...currentTemplate, cols: v })}
+                  style={{ width: 80 }}
+                  size="small"
+                  options={[
+                    { label: '1列', value: 1 },
+                    { label: '2列', value: 2 },
+                    { label: '3列', value: 3 },
+                  ]}
+                />
+              </>
+            )}
+          </Space>
+          <Space size="small">
+            <BgColorsOutlined />
+            <span>背景色:</span>
+            <ColorPicker
+              value={currentTemplate.backgroundColor}
+              onChange={(color) => onTemplateChange({ ...currentTemplate, backgroundColor: color.toHexString() })}
+              presets={[{
+                label: '推荐',
+                colors: ['#1a1a2e', '#0d0d1a', '#1e3a5f', '#2d1b69', '#0a0a0a', '#f5f0e1', '#fafafa', '#1c1c2e'],
+              }]}
+            />
+          </Space>
+          <Space size="small">
+            <span>标题色:</span>
+            <ColorPicker
+              value={currentTemplate.textColor}
+              onChange={(color) => onTemplateChange({ ...currentTemplate, textColor: color.toHexString() })}
+              presets={[{
+                label: '推荐',
+                colors: ['#ffffff', '#f0f0f0', '#e94560', '#f0a500', '#3498db', '#2ecc71', '#333333', '#d4a574'],
+              }]}
+            />
+          </Space>
           <Button
             icon={<UndoOutlined />}
             onClick={onUndo}
@@ -308,9 +665,38 @@ export default function MenuEditor({
         columns={columns}
         rowKey={(_, index) => index}
         pagination={false}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: 'max-content', y: 480 }}
         size="middle"
       />
+
+      {/* 取景调整弹窗 - 可拖动方块区域选定 */}
+      <Modal
+        title="调整取景范围"
+        open={cropModalIndex !== null}
+        onCancel={() => setCropModalIndex(null)}
+        onOk={() => setCropModalIndex(null)}
+        width={520}
+      >
+        {cropModalIndex !== null && menuItems[cropModalIndex]?.image && (
+          <CropArea
+            image={menuItems[cropModalIndex].image}
+            cropX={menuItems[cropModalIndex]._cropX ?? 0}
+            cropY={menuItems[cropModalIndex]._cropY ?? 0}
+            cropW={menuItems[cropModalIndex]._cropW ?? 100}
+            cropH={menuItems[cropModalIndex]._cropH ?? 100}
+            onChange={async (x, y, w, h) => {
+              onUpdateItem(cropModalIndex, { _cropX: x, _cropY: y, _cropW: w, _cropH: h })
+              const item = menuItems[cropModalIndex]
+              if (item?.image) {
+                const palette = await extractPalette(item.image, { x, y, w, h })
+                if (palette) {
+                  onUpdateItem(cropModalIndex, { _imageColor: palette.primary, _imageColorSecondary: palette.secondary, _imageColorDark: palette.dark })
+                }
+              }
+            }}
+          />
+        )}
+      </Modal>
 
       {/* 添加字段弹窗 */}
       <Modal
@@ -321,18 +707,22 @@ export default function MenuEditor({
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            name="key"
-            label="字段标识"
-            rules={[{ required: true, message: '请输入字段标识' }]}
-          >
-            <Input placeholder="例如: brewery" />
-          </Form.Item>
-          <Form.Item
             name="label"
-            label="显示名称"
-            rules={[{ required: true, message: '请输入显示名称' }]}
+            label="字段名称"
+            rules={[{ required: true, message: '请选择字段名称' }]}
           >
-            <Input placeholder="例如: 酿酒厂" />
+            <Select
+              placeholder="请选择字段"
+              options={FIELD_PRESETS
+                .filter(p => !fields.some(f => f.key === p.key))
+                .map(p => ({ label: p.label, value: p.label }))}
+              onChange={(val) => {
+                const preset = FIELD_PRESETS.find(p => p.label === val)
+                if (preset) {
+                  form.setFieldsValue({ type: preset.type })
+                }
+              }}
+            />
           </Form.Item>
           <Form.Item
             name="type"
@@ -343,80 +733,13 @@ export default function MenuEditor({
               options={[
                 { label: '文本', value: 'text' },
                 { label: '数字', value: 'number' },
-                { label: '下拉选择', value: 'select' },
                 { label: '图片', value: 'image' },
               ]}
             />
           </Form.Item>
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.type !== curr.type}
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('type') === 'select' && (
-                <Form.Item
-                  name="options"
-                  label="选项（逗号分隔）"
-                  rules={[{ required: true, message: '请输入选项' }]}
-                >
-                  <Input placeholder="例如: 大杯,中杯,小杯" />
-                </Form.Item>
-              )
-            }
-          </Form.Item>
         </Form>
       </Modal>
 
-      {/* 选择模板弹窗 */}
-      <Modal
-        title="选择模板"
-        open={templateVisible}
-        onCancel={() => setTemplateVisible(false)}
-        footer={null}
-        width={600}
-      >
-        <List
-          dataSource={templates}
-          renderItem={(tmpl) => (
-            <List.Item
-              actions={[
-                <Button
-                  type="primary"
-                  size="small"
-                  onClick={() => handleSelectTemplate(tmpl)}
-                >
-                  使用
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta
-                title={tmpl.name}
-                description={
-                  <Space>
-                    <span style={{
-                      display: 'inline-block',
-                      width: 24,
-                      height: 24,
-                      backgroundColor: tmpl.backgroundColor,
-                      border: '1px solid #d9d9d9',
-                      borderRadius: 4,
-                    }} />
-                    <span style={{
-                      display: 'inline-block',
-                      width: 24,
-                      height: 24,
-                      backgroundColor: tmpl.accentColor,
-                      border: '1px solid #d9d9d9',
-                      borderRadius: 4,
-                    }} />
-                    <Tag>{tmpl.layout === 'card' ? '卡片式' : '列表式'}</Tag>
-                  </Space>
-                }
-              />
-            </List.Item>
-          )}
-        />
-      </Modal>
     </div>
   )
 }

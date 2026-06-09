@@ -1,24 +1,26 @@
 import { useState, useEffect } from 'react'
-import { ConfigProvider, Layout, Tabs, Button, message, Tag, Space } from 'antd'
-import { EditOutlined, EyeOutlined, SaveOutlined, LogoutOutlined, UserOutlined, SettingOutlined } from '@ant-design/icons'
+import { ConfigProvider, Layout, Tabs, message } from 'antd'
+import { EditOutlined, EyeOutlined, PictureOutlined } from '@ant-design/icons'
 import MenuEditor from './components/MenuEditor'
 import MenuPreview from './components/MenuPreview'
-import TemplateManager from './components/TemplateManager'
-import LoginPage from './components/LoginPage'
+import WallMenu from './components/WallMenu'
+import { extractPalette } from './utils/extractPalette'
 import './App.css'
 
 const { Header, Content } = Layout
 
 const defaultFields = [
   { key: 'brand', label: '厂牌', type: 'text' },
-  { key: 'name', label: '款名', type: 'text' },
-  { key: 'style', label: '风格', type: 'text' },
-  { key: 'styleEn', label: '风格（英文）', type: 'text' },
   { key: 'origin', label: '产地', type: 'text' },
-  { key: 'abv', label: '酒精度', type: 'number' },
-  { key: 'cupType', label: '杯型', type: 'select', options: ['大杯', '中杯', '小杯'] },
-  { key: 'price', label: '定价', type: 'number' },
-  { key: 'image', label: '宣传图片', type: 'image' },
+  { key: 'name', label: '啤酒商品名', type: 'text' },
+  { key: 'style', label: '类型（中文）', type: 'text' },
+  { key: 'styleEn', label: '类型（英文）', type: 'text' },
+  { key: 'hops', label: '啤酒花', type: 'text' },
+  { key: 'abv', label: '酒精度', type: 'number', unit: '%' },
+  { key: 'cupType', label: '杯型大小', type: 'text' },
+  { key: 'ml', label: '毫升', type: 'number', unit: 'mL' },
+  { key: 'price', label: '售价', type: 'number', unit: '¥' },
+  { key: 'image', label: '宣传图', type: 'image' },
 ]
 
 const defaultTemplate = {
@@ -28,7 +30,9 @@ const defaultTemplate = {
   accentColor: '#e94560',
   fontFamily: 'sans-serif',
   layout: 'card',
-  canvasSize: { width: 400, height: 500 },
+  sizePreset: 'a4-portrait-1',
+  canvasSize: { width: 794, height: 1123 },
+  cols: 1,
   backgroundImage: '',
   backgroundOpacity: 0.15,
 }
@@ -40,9 +44,9 @@ const sampleMenus = [
     fields: [...defaultFields],
     template: { ...defaultTemplate, name: '深色主题' },
     items: [
-      { brand: '玄水屋', name: '七海大侦探', style: '双倍干投双倍西海岸IPA', styleEn: 'DDH DOUBLE WEST COAST IPA', origin: '西安', abv: 8.1, cupType: '大杯', price: 52, image: '' },
-      { brand: '高大师', name: '婴儿肥', style: '印度淡色艾尔', styleEn: 'IPA', origin: '南京', abv: 5.5, cupType: '中杯', price: 38, image: '' },
-      { brand: '牛啤堂', name: '帝都海盐', style: '古斯', styleEn: 'Gose', origin: '北京', abv: 4.2, cupType: '大杯', price: 45, image: '' },
+      { brand: '玄水屋', origin: '中国', name: '七海大侦探', style: '双倍干投双倍西海岸IPA', styleEn: 'DDH DOUBLE WEST COAST IPA', hops: 'Citra, Mosaic', abv: 8.1, cupType: '大杯', ml: 473, price: 52, image: '' },
+      { brand: '高大师', origin: '中国', name: '婴儿肥', style: '印度淡色艾尔', styleEn: 'IPA', hops: 'Cascade', abv: 5.5, cupType: '中杯', ml: 330, price: 38, image: '' },
+      { brand: '牛啤堂', origin: '中国', name: '帝都海盐', style: '古斯', styleEn: 'Gose', hops: 'Saaz', abv: 4.2, cupType: '大杯', ml: 473, price: 45, image: '' },
     ],
   },
   {
@@ -51,8 +55,8 @@ const sampleMenus = [
     fields: [...defaultFields],
     template: { ...defaultTemplate, name: '深色主题', backgroundColor: '#0d0d1a', accentColor: '#f0a500' },
     items: [
-      { brand: '酿酒狗', name: '东京*', style: '帝国世涛', styleEn: 'Imperial Stout', origin: '苏格兰', abv: 18.2, cupType: '小杯', price: 68, image: '' },
-      { brand: '左手', name: '氮气牛奶世涛', style: '牛奶世涛', styleEn: 'Milk Stout', origin: '美国', abv: 6.0, cupType: '大杯', price: 48, image: '' },
+      { brand: '酿酒狗', origin: '苏格兰', name: '东京*', style: '帝国世涛', styleEn: 'Imperial Stout', hops: 'Sorachi Ace', abv: 18.2, cupType: '小杯', ml: 200, price: 68, image: '' },
+      { brand: '左手', origin: '美国', name: '氮气牛奶世涛', style: '牛奶世涛', styleEn: 'Milk Stout', hops: 'Magnum', abv: 6.0, cupType: '大杯', ml: 473, price: 48, image: '' },
     ],
   },
   {
@@ -61,9 +65,9 @@ const sampleMenus = [
     fields: [...defaultFields],
     template: { ...defaultTemplate, name: '清新主题', backgroundColor: '#f5f0e1', textColor: '#333333', accentColor: '#e67e22' },
     items: [
-      { brand: '保拉纳', name: '小麦啤酒', style: '德式小麦', styleEn: 'Hefeweizen', origin: '德国', abv: 5.5, cupType: '大杯', price: 42, image: '' },
-      { brand: '白熊', name: '白熊', style: '比利时小麦', styleEn: 'Witbier', origin: '比利时', abv: 4.7, cupType: '中杯', price: 35, image: '' },
-      { brand: '鹅岛', name: '312城市小麦', style: '城市小麦', styleEn: 'Urban Wheat', origin: '美国', abv: 4.2, cupType: '大杯', price: 40, image: '' },
+      { brand: '保拉纳', origin: '德国', name: '小麦啤酒', style: '德式小麦', styleEn: 'Hefeweizen', hops: 'Hallertau', abv: 5.5, cupType: '大杯', ml: 500, price: 42, image: '' },
+      { brand: '白熊', origin: '比利时', name: '白熊', style: '比利时小麦', styleEn: 'Witbier', hops: 'Saaz', abv: 4.7, cupType: '中杯', ml: 330, price: 35, image: '' },
+      { brand: '鹅岛', origin: '美国', name: '312城市小麦', style: '城市小麦', styleEn: 'Urban Wheat', hops: 'Cascade', abv: 4.2, cupType: '大杯', ml: 473, price: 40, image: '' },
     ],
   },
   {
@@ -72,8 +76,8 @@ const sampleMenus = [
     fields: [...defaultFields],
     template: { ...defaultTemplate, name: '活力主题', backgroundColor: '#2d1b69', accentColor: '#e74c3c' },
     items: [
-      { brand: '3泉', name: '老贵兹', style: '贵兹', styleEn: 'Gueuze', origin: '比利时', abv: 6.0, cupType: '中杯', price: 88, image: '' },
-      { brand: '康帝隆', name: '克里克', style: '水果兰比克', styleEn: 'Kriek', origin: '比利时', abv: 5.0, cupType: '中杯', price: 78, image: '' },
+      { brand: '3泉', origin: '比利时', name: '老贵兹', style: '贵兹', styleEn: 'Gueuze', hops: 'Aged Hops', abv: 6.0, cupType: '中杯', ml: 375, price: 88, image: '' },
+      { brand: '康帝隆', origin: '比利时', name: '克里克', style: '水果兰比克', styleEn: 'Kriek', hops: 'Aged Hops', abv: 5.0, cupType: '中杯', ml: 375, price: 78, image: '' },
     ],
   },
   {
@@ -82,10 +86,10 @@ const sampleMenus = [
     fields: [...defaultFields],
     template: { ...defaultTemplate, name: '简约主题', backgroundColor: '#1e3a5f', accentColor: '#3498db' },
     items: [
-      { brand: '朝日', name: '超爽', style: '超级干', styleEn: 'Super Dry', origin: '日本', abv: 5.0, cupType: '大杯', price: 28, image: '' },
-      { brand: '百威', name: '百威', style: '美式拉格', styleEn: 'American Lager', origin: '美国', abv: 5.0, cupType: '大杯', price: 25, image: '' },
-      { brand: '青岛', name: '青岛经典', style: '拉格', styleEn: 'Lager', origin: '中国', abv: 4.7, cupType: '大杯', price: 20, image: '' },
-      { brand: '喜力', name: '喜力', style: '欧式拉格', styleEn: 'Euro Lager', origin: '荷兰', abv: 5.0, cupType: '大杯', price: 30, image: '' },
+      { brand: '朝日', origin: '日本', name: '超爽', style: '超级干', styleEn: 'Super Dry', hops: 'Saaz', abv: 5.0, cupType: '大杯', ml: 500, price: 28, image: '' },
+      { brand: '百威', origin: '美国', name: '百威', style: '美式拉格', styleEn: 'American Lager', hops: 'Hallertau', abv: 5.0, cupType: '大杯', ml: 473, price: 25, image: '' },
+      { brand: '青岛', origin: '中国', name: '青岛经典', style: '拉格', styleEn: 'Lager', hops: 'Saaz', abv: 4.7, cupType: '大杯', ml: 500, price: 20, image: '' },
+      { brand: '喜力', origin: '荷兰', name: '喜力', style: '欧式拉格', styleEn: 'Euro Lager', hops: 'Saaz', abv: 5.0, cupType: '大杯', ml: 330, price: 30, image: '' },
     ],
   },
 ]
@@ -99,7 +103,6 @@ const createNewMenu = (name = '新酒单') => ({
 })
 
 function App() {
-  const [user, setUser] = useState(null)
   const [menus, setMenus] = useState(() => {
     const saved = localStorage.getItem('menu_editor_menus')
     return saved ? JSON.parse(saved) : sampleMenus
@@ -112,10 +115,6 @@ function App() {
     }
     return sampleMenus[0].id
   })
-  const [templates, setTemplates] = useState(() => {
-    const saved = localStorage.getItem('menu_editor_templates')
-    return saved ? JSON.parse(saved) : [defaultTemplate]
-  })
   const [activeTab, setActiveTab] = useState('edit')
 
   useEffect(() => {
@@ -123,14 +122,34 @@ function App() {
   }, [menus])
 
   useEffect(() => {
-    localStorage.setItem('menu_editor_templates', JSON.stringify(templates))
-  }, [templates])
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('menu_editor_current_user')
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
-    }
+    let needsUpdate = false
+    const itemsToProcess = []
+    menus.forEach((menu, mi) => {
+      menu.items.forEach((item, ii) => {
+        if (item.image && !item._imageColorSecondary) {
+          needsUpdate = true
+          const crop = (item._cropW && item._cropW < 100)
+            ? { x: item._cropX || 0, y: item._cropY || 0, w: item._cropW, h: item._cropH || item._cropW }
+            : undefined
+          itemsToProcess.push({ mi, ii, image: item.image, crop })
+        }
+      })
+    })
+    if (!needsUpdate) return
+    Promise.all(itemsToProcess.map(({ image, crop }) => extractPalette(image, crop))).then(results => {
+      setMenus(prev => {
+        const updated = JSON.parse(JSON.stringify(prev))
+        itemsToProcess.forEach(({ mi, ii }, idx) => {
+          const palette = results[idx]
+          if (palette && updated[mi]?.items[ii]) {
+            updated[mi].items[ii]._imageColor = palette.primary
+            updated[mi].items[ii]._imageColorSecondary = palette.secondary
+            updated[mi].items[ii]._imageColorDark = palette.dark
+          }
+        })
+        return updated
+      })
+    })
   }, [])
 
   const [undoStack, setUndoStack] = useState([])
@@ -188,19 +207,7 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [undoStack, redoStack, activeTab, activeMenuId, menus])
 
-  const handleLogin = (userData) => {
-    setUser(userData)
-    localStorage.setItem('menu_editor_current_user', JSON.stringify(userData))
-  }
-
-  const handleLogout = () => {
-    setUser(null)
-    localStorage.removeItem('menu_editor_current_user')
-    message.success('已退出登录')
-  }
-
   const activeMenu = menus.find(m => m.id === activeMenuId)
-  const isAdmin = user?.role === 'admin'
 
   const updateActiveMenu = (updates) => {
     setMenus(menus.map(m => m.id === activeMenuId ? { ...m, ...updates } : m))
@@ -216,9 +223,16 @@ function App() {
   }
 
   const handleUpdateItem = (index, key, value) => {
-    const updated = [...activeMenu.items]
-    updated[index] = { ...updated[index], [key]: value }
-    updateActiveMenu({ items: updated })
+    setMenus(prev => prev.map(m => {
+      if (m.id !== activeMenuId) return m
+      const updated = [...m.items]
+      if (typeof key === 'object') {
+        updated[index] = { ...updated[index], ...key }
+      } else {
+        updated[index] = { ...updated[index], [key]: value }
+      }
+      return { ...m, items: updated }
+    }))
   }
 
   const handleDeleteItem = (index) => {
@@ -246,16 +260,6 @@ function App() {
     })
   }
 
-  const handleSaveTemplate = (name) => {
-    const newTemplate = { ...activeMenu.template, name }
-    setTemplates([...templates, newTemplate])
-    message.success(`模板 "${name}" 已保存`)
-  }
-
-  const handleLoadTemplate = (tmpl) => {
-    updateActiveMenu({ template: tmpl })
-    message.success(`已加载模板 "${tmpl.name}"`)
-  }
 
   const handleImportItems = (items) => {
     pushUndo()
@@ -294,14 +298,6 @@ function App() {
     setActiveTab('preview')
   }
 
-  if (!user) {
-    return (
-      <ConfigProvider theme={{ token: { colorPrimary: '#e94560' } }}>
-        <LoginPage onLogin={handleLogin} />
-      </ConfigProvider>
-    )
-  }
-
   const tabItems = [
     {
       key: 'edit',
@@ -315,7 +311,6 @@ function App() {
         <MenuEditor
           menuItems={activeMenu.items}
           fields={activeMenu.fields}
-          templates={templates}
           currentTemplate={activeMenu.template}
           onAddItem={handleAddItem}
           onUpdateItem={handleUpdateItem}
@@ -352,22 +347,15 @@ function App() {
       ),
     },
     {
-      key: 'template',
+      key: 'wall',
       label: (
         <span>
-          {isAdmin ? <SettingOutlined /> : <SaveOutlined />}
-          {isAdmin ? '系统配置' : '模板管理'}
+          <PictureOutlined />
+          墙贴酒单
         </span>
       ),
       children: (
-        <TemplateManager
-          templates={templates}
-          currentTemplate={activeMenu?.template || defaultTemplate}
-          onSave={handleSaveTemplate}
-          onLoad={handleLoadTemplate}
-          onTemplateChange={(tmpl) => updateActiveMenu({ template: tmpl })}
-          isAdmin={isAdmin}
-        />
+        <WallMenu menus={menus} />
       ),
     },
   ]
@@ -377,14 +365,6 @@ function App() {
       <Layout className="app-layout">
         <Header className="app-header">
           <h1>酒单编辑器</h1>
-          <Space>
-            <Tag color={isAdmin ? 'red' : 'blue'} icon={isAdmin ? <SettingOutlined /> : <UserOutlined />}>
-              {isAdmin ? '管理员' : '用户'}: {user.username}
-            </Tag>
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} style={{ color: '#fff' }}>
-              退出
-            </Button>
-          </Space>
         </Header>
         <Content className="app-content">
           <Tabs
